@@ -1,134 +1,65 @@
-FROM debian:testing
+### Dockerfile --- spacemacs-docker dockerfile with Emacs25.x
+##
+## Copyright (c) 2012-2018 Sylvain Benner & Contributors
+##
+## Author: Eugene "JAremko" Yaremenko <w3techplayground@gmail.com>
+##
+##
+## This file is not part of GNU Emacs.
+##
+### License: GPLv3
+##
+## See spacemacs/layers/+distributions/spacemacs-docker/README.org
 
-MAINTAINER Tyrael Tong <tyraeltong@gmail.com>
+FROM jare/emacs:latest
+# FROM jare/emacs:emacs24
+# Emacs snapshot
+# FROM jare/emacs:testing
 
-ENV DEBIAN_FRONTEND noninteractive
+MAINTAINER JAremko <w3techplaygound@gmail.com>
 
-# Basic stuff
+ENV UNAME="spacemacser" \
+    UID="1000"
 
-COPY cleanup.sh /usr/local/bin/cleanup.sh
-COPY aptupd.sh /usr/local/bin/aptupd.sh
+# Default fonts
+ENV NNG_URL="https://github.com/google/fonts/raw/master/ofl/\
+nanumgothic/NanumGothic-Regular.ttf" \
+    SCP_URL="https://github.com/adobe-fonts/source-code-pro/\
+archive/2.030R-ro/1.050R-it.tar.gz"
+RUN apt-get update && apt-get install wget \
+    && mkdir -p /usr/local/share/fonts \
+    && wget -qO- "${SCP_URL}" | tar xz -C /usr/local/share/fonts \
+    && wget -q "${NNG_URL}" -P /usr/local/share/fonts \
+    && fc-cache -fv \
+    && apt-get purge wget \
+    && rm -rf /tmp/* /var/lib/apt/lists/* /root/.cache/*
 
-RUN echo  'Acquire::Retries       "3";'  >> /etc/apt/apt.conf.d/70debconf && \
-    echo  'Acquire::http::Timeout "20";' >> /etc/apt/apt.conf.d/70debconf && \
-    echo  'Acquire::ftp::Timeout  "20";' >> /etc/apt/apt.conf.d/70debconf
+# UHOME is /home/emacs (from jare/emacs)
+ADD . ${UHOME}/.emacs.d
 
-RUN sh /usr/local/bin/aptupd.sh                          && \
-    apt-get install -y tar sudo bash fontconfig curl git    \
-      htop unzip openssl mosh rsync make                 && \
-    sh /usr/local/bin/cleanup.sh
+# Init Spacemacs
+RUN cp ${UHOME}/.emacs.d/core/templates/.spacemacs.template ${UHOME}/ \
+    && mv ${UHOME}/.spacemacs.template ${UHOME}/.spacemacs \
+    && sed -i "s/\(-distribution 'spacemacs\)/\1-docker/" \
+    ${UHOME}/.spacemacs \
+    && asEnvUser emacs -batch -u ${UNAME} -kill \
+    && asEnvUser emacs -batch -u ${UNAME} -kill \
+    && chmod ug+rw -R ${UHOME}
 
-# Setup user
+# Test Spacemacs
+RUN asEnvUser make -C ${UHOME}/.emacs.d/tests/core/ test \
+    && cd ${UHOME}/.emacs.d \
+    && printf "SPACEMACS REVISION: %s\n" "$(git rev-parse --verify HEAD)"
 
-ENV uid 1000
-ENV gid 1000
-ENV UNAME tyrael
+RUN ln -s \
+    ${UHOME}/.emacs.d/layers/+distributions/spacemacs-docker/deps-install/run \
+    /usr/local/sbin/install-deps \
+    && chown root:root /usr/local/sbin/install-deps \
+    && chmod 770 /usr/local/sbin/install-deps
 
-RUN mkdir -p /home/${UNAME}/workspace                                                   && \
-    echo "${UNAME}:x:${uid}:${gid}:${UNAME},,,:/home/${UNAME}:/bin/bash" >> /etc/passwd && \
-    echo "${UNAME}:x:${uid}:" >> /etc/group                                             && \
-    echo "${UNAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${UNAME}                   && \
-    echo "docker:x:999:${UNAME}" >> /etc/group                                          && \
-    chmod 0440 /etc/sudoers.d/${UNAME}                                                  && \
-    chown ${uid}:${gid} -R /home/${UNAME}
+# Install global dependencies (if any exists)
+RUN install-deps
 
-USER ${UNAME}
-
-RUN mkdir -p $HOME/.ssh   && \
-    chmod 664 $HOME/.ssh
-
-ENV HOME /home/${UNAME}
-
-LABEL HOME=$HOME
-
-ENV GOPATH $HOME/workspace
-ENV GOROOT /usr/lib/go
-ENV GOBIN $GOROOT/bin
-
-ENV NODEBIN /usr/lib/node_modules/bin
-
-ENV PATH $PATH:$GOBIN:$GOPATH/bin:$NODEBIN
-
-# Bash
-
-RUN echo "export HOME=$HOME" >> $HOME/.bashrc                             && \
-    echo "export GOPATH=$GOPATH" >> $HOME/.bashrc                         && \
-    echo "export GOROOT=$GOROOT" >> $HOME/.bashrc                         && \
-    echo "export GOBIN=$GOBIN" >> $HOME/.bashrc                           && \
-    echo "export PATH=$PATH:$GOBIN:$GOPATH/bin" >> $HOME/.bashrc && \
-    . $HOME/.bashrc
-
-# Fonts
-
-ADD https://github.com/adobe-fonts/source-code-pro/archive/2.010R-ro/1.030R-it.zip /tmp/scp.zip
-ADD http://www.ffonts.net/NanumGothic.font.zip /tmp/ng.zip
-
-RUN sudo mkdir -p /usr/local/share/fonts               && \
-    sudo unzip /tmp/scp.zip -d /usr/local/share/fonts  && \
-    sudo unzip /tmp/ng.zip -d /usr/local/share/fonts   && \
-    sudo chown ${uid}:${gid} -R /usr/local/share/fonts && \
-    sudo chmod 777 -R /usr/local/share/fonts           && \
-    sudo fc-cache -fv                                  && \
-    sudo sh /usr/local/bin/cleanup.sh
-
-# Fish
-
-RUN sudo sh /usr/local/bin/aptupd.sh                                                       && \
-    sudo apt-get -y install fish                                                           && \
-
-    sudo sed -i 's/\/bin\/ash/\/usr\/bin\/fish/g' /etc/passwd                              && \
-
-    mkdir -p $HOME/.config/fish                                                            && \
-
-    echo "set -x HOME $HOME" >> $HOME/.config/fish/config.fish                             && \
-    echo "set -x GOPATH $GOPATH" >> $HOME/.config/fish/config.fish                         && \
-    echo "set -x GOROOT $GOROOT" >> $HOME/.config/fish/config.fish                         && \
-    echo "set -x GOBIN $GOBIN" >> $HOME/.config/fish/config.fish                           && \
-    echo "set -x NODEBIN $NODEBIN" >> $HOME/.config/fish/config.fish                       && \
-    echo "set -g fish_key_bindings fish_vi_key_bindings" >> $HOME/.config/fish/config.fish && \
-    echo "set --universal fish_user_paths $fish_user_paths $GOBIN $GOPATH/bin $NODEBIN"       \
-      >> $HOME/.config/fish/config.fish                                                    && \
-
-    fish -c source $HOME/.config/fish/config.fish                                          && \
-
-    sudo sh /usr/local/bin/cleanup.sh
-
-# Emacs
-
-RUN sudo sh /usr/local/bin/aptupd.sh                               && \
-    sudo apt-get install -y emacs ispell iamerican-insane dbus-x11    \
-      libegl1-mesa                                                 && \
-
-    sudo sh /usr/local/bin/cleanup.sh
-
-# Spacemacs
-
-COPY .spacemacs $HOME/.spacemacs
-
-RUN git clone https://github.com/AndreaCrotti/yasnippet-snippets.git                                       \
-      /tmp/snippets                                                                                     && \
-
-    git clone https://github.com/syl20bnr/spacemacs.git -b develop                                         \
-      ${HOME}/.emacs.d                                                                                  && \
-
-    sudo mv -f /tmp/snippets $HOME/.emacs.d/private/snippets                                            && \
-
-    sudo find $HOME/                                                                                       \
-      \( -type d -exec chmod u+rwx,g+rwx,o+rx {} \;                                                        \
-      -o -type f -exec chmod u+rw,g+rw,o+r {} \; \)                                                     && \
-
-    sudo chown -R ${uid}:${gid} $HOME                                                                   && \
-    export SHELL=/usr/bin/fish                                                                          && \
-
-    emacs -nw -batch -u "${UNAME}" -q -kill                                                             && \
-    # Sometimes it does something.
-    emacs -nw -batch -u "${UNAME}" -q -kill                                                             && \
-    sed -i "s/dotspacemacs-install-packages 'all/dotspacemacs-install-packages 'used-but-keep-unused/g"    \
-      ${HOME}/.spacemacs                                                                                && \
-    emacs -nw -batch -u "${UNAME}" -q -kill                                                             && \
-
-    sudo sh /usr/local/bin/cleanup.sh
-
-COPY start.bash /usr/local/bin/start.bash
-
-ENTRYPOINT ["bash", "/usr/local/bin/start.bash"]
+# Entrypoint and deps installation script will recreate it.
+RUN userdel $UNAME \
+    && groupdel $GNAME
