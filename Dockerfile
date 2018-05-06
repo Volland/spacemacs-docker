@@ -1,8 +1,8 @@
 ### Dockerfile --- spacemacs-docker dockerfile with Emacs25.x
-##
+## Autor Volodymyr Pavlyshyn
+## Based on 
 ## Copyright (c) 2012-2018 Sylvain Benner & Contributors
-##
-## Author: Eugene "JAremko" Yaremenko <w3techplayground@gmail.com>
+## Original Author: Eugene "JAremko" Yaremenko <w3techplayground@gmail.com>
 ##
 ##
 ## This file is not part of GNU Emacs.
@@ -37,9 +37,8 @@ RUN apt-get update && apt-get install wget \
 # UHOME is /home/emacs (from jare/emacs)
 ADD . ${UHOME}/.emacs.d
 
-# Init Spacemacs
-RUN cp ${UHOME}/.emacs.d/core/templates/.spacemacs.template ${UHOME}/ \
-    && mv ${UHOME}/.spacemacs.template ${UHOME}/.spacemacs \
+# Spacemacs setup 
+RUN cp .spacemacs ${UHOME}/.spacemacs \
     && sed -i "s/\(-distribution 'spacemacs\)/\1-docker/" \
     ${UHOME}/.spacemacs \
     && asEnvUser emacs -batch -u ${UNAME} -kill \
